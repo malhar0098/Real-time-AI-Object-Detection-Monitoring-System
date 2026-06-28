@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h3>Welcome, {{ current_user.username }}</h3>
+        <p class="text-muted">Live Object Detection System</p>
+    </div>
+</div>
+
+<div class="row">
+
+    <!-- Full Width Camera -->
+    <div class="col-12 mb-4">
+        <div class="card shadow-lg">
+
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+
+                <span>Live Camera Feed</span>
+
+                <button onclick="toggleDetection()" 
+                        id="toggleBtn"
+                        class="btn btn-warning btn-sm">
+                    Detection OFF
+                </button>
+
+            </div>
+
+            <div class="card-body p-0">
+
+                <div style="height: 80vh; background:black;">
+                    <img src="{{ url_for('video_feed') }}"
+                         style="width:100%; height:100%; object-fit:contain;"
+                         class="rounded-bottom">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Info Panel Below -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-lg">
+            <div class="card-header bg-dark text-white">
+                Detection Information
+            </div>
+            <div class="card-body">
+                <p><strong>Status:</strong> <span class="text-success">Running</span></p>
+                <p><strong>Detected Objects:</strong> <span id="count">0</span></p>
+                <p><strong>Last Detected:</strong> <span id="last">None</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Info Row -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-lg">
+            <div class="card-header bg-dark text-white">
+                System Information
+            </div>
+            <div class="card-body">
+                <p><strong>Camera:</strong> <span id="camera">Loading...</span></p>
+                <p><strong>Model:</strong> <span id="model">Loading...</span></p>
+                <p><strong>Audio:</strong> <span id="audio">Loading...</span></p>
+                <p><strong>FPS:</strong> <span id="fps">0</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateStats() {
+    fetch('/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('count').innerText = data.count;
+            document.getElementById('last').innerText = data.last;
+        });
+}
+
+// Update every 1 second
+setInterval(updateStats, 1000);
+
+function updateSystemInfo() {
+    fetch('/system_info')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('camera').innerText = data.camera;
+            document.getElementById('model').innerText = data.model;
+            document.getElementById('audio').innerText = data.audio;
+            document.getElementById('fps').innerText = data.fps;
+        });
+}
+
+setInterval(updateSystemInfo, 1000);
+
+function toggleDetection() {
+
+    fetch('/toggle_detection', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+
+        const button = document.getElementById('toggleBtn');
+
+        if(data.detection_enabled) {
+            button.innerText = "Turn Detection OFF";
+            button.classList.remove("btn-success");
+            button.classList.add("btn-warning");
+        }
+        else {
+            button.innerText = "Turn Detection ON";
+            button.classList.remove("btn-warning");
+            button.classList.add("btn-success");
+        }
+
+    });
+}
+</script>
+
+{% endblock %}

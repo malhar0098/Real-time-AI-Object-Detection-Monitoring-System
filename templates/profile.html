@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+
+        <div class="card shadow-lg">
+            <div class="card-header bg-dark text-white">
+                User Profile
+            </div>
+
+            <div class="card-body">
+
+                <div class="mb-3">
+                    <strong>User ID:</strong>
+                    <p>{{ current_user.id }}</p>
+                </div>
+
+                <div class="mb-3">
+                    <strong>Username:</strong>
+                    <p>{{ current_user.username }}</p>
+                </div>
+
+                <div class="mb-3">
+                    <strong>Role:</strong>
+                    {% if current_user.role == "admin" %}
+                        <span class="badge bg-danger">Admin</span>
+                    {% else %}
+                        <span class="badge bg-secondary">User</span>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <strong>Authenticated:</strong>
+                    {% if current_user.is_authenticated %}
+                        <span class="text-success">Yes</span>
+                    {% else %}
+                        <span class="text-danger">No</span>
+                    {% endif %}
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

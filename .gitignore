@@ -1,0 +1,35 @@
+# Virtual Environment
+venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+
+# SQLite Database
+instance/*.db
+*.db
+
+# Environment Variables
+.env
+
+# VS Code
+.vscode/
+
+# JetBrains
+.idea/
+
+# Logs
+*.log
+
+# Build Files
+build/
+dist/
+
+# Temporary Files
+*.tmp
+
+# Windows
+Thumbs.db
+
+# macOS
+.DS_Store
