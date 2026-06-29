@@ -7,29 +7,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, DetectionHistory
 # Database access → db, User entity → User
 from flask_login import current_user
-from flask import request
 from flask import flash
-import cv2
 from flask import Response
 from ultralytics import YOLO
-import pyttsx3
 import time
-import threading
 from flask import jsonify
 #Detection Queue
 from queue import Queue
 #To scale detection queue
 from dataclasses import dataclass
-
-def speak(text):
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 150)
-    engine.say(text)
-    engine.runAndWait()
-    engine.stop()
-
-last_spoken_time = 0
-SPEAK_DELAY = 5  # seconds between announcements
+import numpy as np
+import cv2
 
 @dataclass
 class DetectionEvent:
@@ -103,11 +91,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 
 db.init_app(app)
 # This links SQLAlchemy to our Flask app
-
-threading.Thread(
-    target=database_logger,
-    daemon=True
-).start()
 
 from datetime import datetime, timedelta
 
@@ -307,107 +290,6 @@ def delete_user(id):
 def profile():
     return render_template('profile.html')
 
-def generate_frames(username):
-    global detection_count, last_detected_object, last_spoken_time, camera_status, fps_value, detection_enabled
-
-    camera = cv2.VideoCapture(0)
-    if camera.isOpened():
-        camera_status = "Connected"
-    else:
-        camera_status = "Not Connected"
-
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
-    while True:
-        start_time = time.time()
-        success, frame = camera.read()
-        if not success:
-            break
-
-        if detection_enabled:
-
-            # Run YOLO
-            results = model(frame)
-
-            for r in results:
-                for box in r.boxes:
-
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cls = int(box.cls[0])
-                    confidence = float(box.conf[0]) * 100
-                    confidence = round(confidence, 2)
-                    label = model.names[cls]
-
-                    detection_count += 1
-                    last_detected_object = label
-
-                    width_in_frame = x2 - x1
-                    distance = None
-
-                    if label in KNOWN_WIDTHS and width_in_frame > 0:
-                        real_width = KNOWN_WIDTHS[label]
-                        distance = (real_width * FOCAL_LENGTH) / width_in_frame
-                        distance = round(distance, 2)
-
-                    current_time = time.time()
-
-                    if distance:
-                        global last_detected_label
-
-                        if (label != last_detected_label) or (current_time - last_spoken_time > SPEAK_DELAY):
-
-                            speech_text = f"{label} at {distance} meters"
-                            threading.Thread(
-                                target=speak,
-                                args=(speech_text,),
-                                daemon=True
-                            ).start()
-
-                            last_spoken_time = current_time
-                            last_detected_label = label
-
-                    if label not in last_saved_times:
-                        last_saved_times[label] = 0
-
-                    if current_time - last_saved_times[label] > SAVE_DELAY:
-
-                        event = DetectionEvent(
-                            username=username,
-                            object_name=label,
-                            distance=distance,
-                            confidence=confidence
-                        )
-
-                        detection_queue.put(event)
-
-                        last_saved_times[label] = current_time
-
-                    # Draw box
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-
-                    if distance:
-                        text = f"{label} - {distance}m"
-                    else:
-                        text = label
-
-                    cv2.putText(frame, text,
-                                (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.8,
-                                (0,255,0),
-                                2)
-
-        # Encode frame
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-
-        end_time = time.time()
-        fps_value = round(1 / (end_time - start_time), 2)
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
 @app.route('/stats')
 @login_required
 def stats():
@@ -437,12 +319,85 @@ def toggle_detection():
         "detection_enabled": detection_enabled
     })
 
-@app.route('/video_feed')
+#NEW ARCHITECTURE
+@app.route("/detect", methods=["POST"])
 @login_required
-def video_feed():
-    username = current_user.username
-    return Response(generate_frames(username),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+def detect():
+
+    image = request.files.get("image")
+
+    if image is None:
+        return {"status":"no image"}
+
+    file_bytes = np.frombuffer(
+        image.read(),
+        np.uint8
+    )
+
+    frame = cv2.imdecode(
+        file_bytes,
+        cv2.IMREAD_COLOR
+    )
+
+    results = model(frame)
+    objects = []
+    for r in results:
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(
+                int,
+                box.xyxy[0]
+            )
+            cls = int(box.cls[0])
+            label = model.names[cls]
+            confidence = round(
+                float(box.conf[0]) * 100,
+                2
+            )
+
+            width_in_frame = x2 - x1
+            distance = None
+            if label in KNOWN_WIDTHS and width_in_frame > 0:
+                real_width = KNOWN_WIDTHS[label]
+                distance = round(
+                    (real_width * FOCAL_LENGTH) / width_in_frame,
+                    2
+                )
+
+            current_time = time.time()
+
+            if label not in last_saved_times:
+                last_saved_times[label] = 0
+
+            if current_time - last_saved_times[label] > SAVE_DELAY:
+
+                event = DetectionEvent(
+                    username=current_user.username,
+                    object_name=label,
+                    distance=distance,
+                    confidence=confidence
+                )
+
+                detection_queue.put(event)
+
+                last_saved_times[label] = current_time
+
+            objects.append({
+                "label":label,
+                "confidence":confidence,
+                "distance":distance,
+                "x1":x1,
+                "y1":y1,
+                "x2":x2,
+                "y2":y2
+})
+    return {
+        "status": "success",
+        "objects": objects
+    }
+
+@app.route("/browser-camera")
+def browser_camera():
+    return render_template("browser_camera.html")
 
 if __name__ == "__main__":
     app.run(debug=True)

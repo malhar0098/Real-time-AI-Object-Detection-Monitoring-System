@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Browser Camera Test</title>
+</head>
+
+<body>
+
+    <h2>Browser Camera API Test</h2>
+
+    <div id="videoContainer"
+        style="position:relative;
+            width:800px;
+            height:500px;">
+
+        <video
+            id="video"
+            autoplay
+            playsinline
+            muted
+            style="
+                position:absolute;
+                left:0;
+                top:0;
+                width:800px;
+                height:500px;
+                object-fit:cover;
+                z-index:1;">
+        </video>
+
+        <canvas
+            id="overlay"
+            width="800"
+            height="500"
+            style="
+                position:absolute;
+                left:0;
+                top:0;
+                z-index:2;
+                pointer-events:none;">
+        </canvas>
+    </div>
+    <canvas
+        id="canvas"
+        width="640"
+        height="480"
+        style="display:none;">
+    </canvas>
+    <br><br>
+
+    <p id="result"></p>
+
+<script src="{{ url_for('static', filename='js/browser_detection.js') }}"></script>
+
+</body>
+
+</html>
