@@ -34,6 +34,7 @@ def database_logger():
         event = detection_queue.get()
 
         with app.app_context():
+            db.create_all()
 
             new_detection = DetectionHistory(
                 username=event.username,
