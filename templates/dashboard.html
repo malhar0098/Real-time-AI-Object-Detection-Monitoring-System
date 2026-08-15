@@ -112,7 +112,9 @@
 
 <script>
 function updateStats() {
-    fetch('/stats')
+    fetch("/stats", {
+        credentials: "include"
+    })
         .then(response => response.json())
         .then(data => {
             document.getElementById('count').innerText = data.count;
@@ -124,7 +126,9 @@ function updateStats() {
 setInterval(updateStats, 1000);
 
 function updateSystemInfo() {
-    fetch('/system_info')
+    fetch("/system_info", {
+        credentials: "include"
+    })
         .then(response => response.json())
         .then(data => {
             document.getElementById('camera').innerText = data.camera;

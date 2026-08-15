@@ -64,7 +64,7 @@ async function testAPI(){
             await fetch("/detect",{
 
                 method:"POST",
-
+                credentials: "include",
                 body:formData
 
             });
