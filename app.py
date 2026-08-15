@@ -255,9 +255,9 @@ def logout():
     return redirect(url_for('login'))
 
 with app.app_context():
+    db.create_all()
     admin = User.query.filter_by(username="admin").first()
     if not admin:
-        from werkzeug.security import generate_password_hash
         new_admin = User(
             username="admin",
             password=generate_password_hash("admin123"),
