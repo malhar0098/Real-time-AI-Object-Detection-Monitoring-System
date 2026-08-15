@@ -322,9 +322,8 @@ def toggle_detection():
 
 #NEW ARCHITECTURE
 @app.route("/detect", methods=["POST"])
-@login_required
 def detect():
-
+    global detection_count, last_detected_object
     image = request.files.get("image")
 
     if image is None:
@@ -350,6 +349,8 @@ def detect():
             )
             cls = int(box.cls[0])
             label = model.names[cls]
+            detection_count += 1
+            last_detected_object = label
             confidence = round(
                 float(box.conf[0]) * 100,
                 2
@@ -372,7 +373,7 @@ def detect():
             if current_time - last_saved_times[label] > SAVE_DELAY:
 
                 event = DetectionEvent(
-                    username=current_user.username,
+                    username=current_user.username if current_user.is_authenticated else "anonymous",
                     object_name=label,
                     distance=distance,
                     confidence=confidence

@@ -175,7 +175,7 @@ async function detectionLoop(){
         await testAPI();
 
         await new Promise(resolve =>
-            setTimeout(resolve,100)
+            setTimeout(resolve,500)
         );
 
     }
