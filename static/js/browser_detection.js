@@ -37,40 +37,73 @@ async function startCamera(){
 
 async function testAPI(){
 
-    const canvas = document.getElementById("canvas");
+    if (!video || video.readyState < 2) {
+        return;
+    }
 
-    const context = canvas.getContext("2d");
+    const captureCanvas = document.getElementById("canvas");
+
+    if (!captureCanvas) {
+        return;
+    }
+
+    const context = captureCanvas.getContext("2d");
 
     context.drawImage(
         video,
         0,
         0,
-        canvas.width,
-        canvas.height
+        captureCanvas.width,
+        captureCanvas.height
     );
 
-    canvas.toBlob(async function(blob){
+    const blob = await new Promise(resolve => {
 
-        const formData =
-            new FormData();
-
-        formData.append(
-            "image",
-            blob,
-            "frame.jpg"
+        captureCanvas.toBlob(
+            resolve,
+            "image/jpeg",
+            0.7
         );
 
-        const response =
-            await fetch("/detect",{
+    });
 
-                method:"POST",
-                credentials: "include",
-                body:formData
+    if (!blob) {
+        return;
+    }
 
-            });
+    const formData = new FormData();
+
+    formData.append(
+        "image",
+        blob,
+        "frame.jpg"
+    );
+
+    try {
+
+        const response = await fetch("/detect", {
+
+            method: "POST",
+
+            credentials: "include",
+
+            body: formData
+
+        });
+
+        if (!response.ok) {
+
+            console.error(
+                "Detection request failed:",
+                response.status
+            );
+
+            return;
+        }
 
         const data = await response.json();
-        console.log(data);
+
+        console.log("Detection:", data);
 
         ctx.clearRect(
             0,
@@ -79,66 +112,115 @@ async function testAPI(){
             overlay.height
         );
 
-        const scaleX = overlay.width / canvas.width;
-        const scaleY = overlay.height / canvas.height;
+        if (!data.objects) {
+            return;
+        }
+
+        const scaleX =
+            overlay.width / captureCanvas.width;
+
+        const scaleY =
+            overlay.height / captureCanvas.height;
 
         for (const object of data.objects) {
 
-            const x = object.x1 * scaleX;
-            const y = object.y1 * scaleY;
-            const width = (object.x2 - object.x1) * scaleX;
-            const height = (object.y2 - object.y1) * scaleY;
+            const x =
+                object.x1 * scaleX;
+
+            const y =
+                object.y1 * scaleY;
+
+            const width =
+                (object.x2 - object.x1) * scaleX;
+
+            const height =
+                (object.y2 - object.y1) * scaleY;
 
             ctx.strokeStyle = "lime";
             ctx.lineWidth = 3;
 
-            console.log(x, y, width, height);
-            ctx.strokeRect(x, y, width, height);
-            const countElement = document.getElementById("count");
-            if(countElement){
-                const current = parseInt(countElement.innerText) || 0;
+            ctx.strokeRect(
+                x,
+                y,
+                width,
+                height
+            );
+
+            const countElement =
+                document.getElementById("count");
+
+            if (countElement) {
+
+                const current =
+                    parseInt(countElement.innerText) || 0;
+
                 countElement.innerText =
-                current + 1;
+                    current + 1;
             }
 
-            const lastElement = document.getElementById("last");
-            if(lastElement){
-                lastElement.innerText = object.label;
+            const lastElement =
+                document.getElementById("last");
+
+            if (lastElement) {
+
+                lastElement.innerText =
+                    object.label;
             }
 
-            let label = `${object.label} (${object.confidence}%)`;
-            if(object.distance !== null){
-                label += ` | ${object.distance} m`;
+            let label =
+                `${object.label} (${object.confidence}%)`;
+
+            if (object.distance !== null) {
+
+                label +=
+                    ` | ${object.distance} m`;
             }
 
             ctx.font = "18px Arial";
-            const textWidth = ctx.measureText(label).width;
+
+            const textWidth =
+                ctx.measureText(label).width;
+
             ctx.fillStyle = "lime";
+
             ctx.fillRect(
                 x,
-                y - 28,
+                Math.max(0, y - 28),
                 textWidth + 12,
                 28
             );
+
             ctx.fillStyle = "black";
+
             ctx.fillText(
                 label,
                 x + 5,
-                y - 8
+                Math.max(20, y - 8)
             );
 
-            if(object.distance !== null){
+            if (object.distance !== null) {
+
                 speakDetection(object);
             }
         }
 
-        const result = document.getElementById("result");
+        const result =
+            document.getElementById("result");
 
-        if(result){
-            result.innerHTML = JSON.stringify(data);
+        if (result) {
+
+            result.innerHTML =
+                JSON.stringify(data);
         }
 
-    }, "image/jpeg");
+    }
+    catch (error) {
+
+        console.error(
+            "Detection error:",
+            error
+        );
+    }
 }
 
 function speakDetection(object){
@@ -175,7 +257,7 @@ async function detectionLoop(){
         await testAPI();
 
         await new Promise(resolve =>
-            setTimeout(resolve,500)
+            setTimeout(resolve,1000)
         );
 
     }
