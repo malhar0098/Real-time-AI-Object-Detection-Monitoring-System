@@ -339,7 +339,16 @@ def detect():
         cv2.IMREAD_COLOR
     )
 
-    results = model(frame)
+    frame = cv2.resize(
+        frame,
+        (320, 240)
+    )
+
+    results = model(
+        frame,
+        imgsz=320,
+        verbose=False
+    )
     objects = []
     for r in results:
         for box in r.boxes:
