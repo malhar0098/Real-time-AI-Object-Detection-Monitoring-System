@@ -53,7 +53,7 @@ model_status = "Loading..."
 audio_status = "Enabled"
 fps_value = 0
 
-model = YOLO("yolov8n.pt")
+model = YOLO("yolov8n.onnx", task="detect")
 model_status = "Loaded"
 
 FOCAL_LENGTH = 800  # Approximate (tune later)
@@ -337,11 +337,6 @@ def detect():
     frame = cv2.imdecode(
         file_bytes,
         cv2.IMREAD_COLOR
-    )
-
-    frame = cv2.resize(
-        frame,
-        (320, 240)
     )
 
     results = model(
