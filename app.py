@@ -323,6 +323,7 @@ def toggle_detection():
 #NEW ARCHITECTURE
 @app.route("/detect", methods=["POST"])
 def detect():
+    print("DETECT REQUEST RECEIVED")
     global detection_count, last_detected_object
     image = request.files.get("image")
 
