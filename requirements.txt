@@ -45,3 +45,4 @@ urllib3==2.6.3
 Werkzeug==3.1.5
 gunicorn==23.0.0
 onnxruntime
+onnx
