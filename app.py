@@ -9,6 +9,7 @@ from models import db, User, DetectionHistory
 from flask_login import current_user
 from flask import flash
 from flask import Response
+import onnx
 from ultralytics import YOLO
 import time
 from flask import jsonify
@@ -325,7 +326,7 @@ def toggle_detection():
 def detect():
     print("DETECT REQUEST RECEIVED")
     print("IMAGE RECEIVED:", request.files.get("image") is not None)
-    
+
     global detection_count, last_detected_object
     image = request.files.get("image")
 
