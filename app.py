@@ -9,8 +9,7 @@ from models import db, User, DetectionHistory
 from flask_login import current_user
 from flask import flash
 from flask import Response
-import onnx
-from ultralytics import YOLO
+import onnxruntime as ort
 import time
 from flask import jsonify
 #Detection Queue
@@ -54,8 +53,191 @@ model_status = "Loading..."
 audio_status = "Enabled"
 fps_value = 0
 
-model = YOLO("yolov8n.onnx", task="detect")
+onnx_session = ort.InferenceSession(
+    "yolov8n.onnx",
+    providers=["CPUExecutionProvider"]
+)
+
+model_input_name = onnx_session.get_inputs()[0].name
+
 model_status = "Loaded"
+
+def run_onnx_detection(frame):
+
+    original_height, original_width = frame.shape[:2]
+
+    # Resize frame to YOLO input size
+    resized = cv2.resize(
+        frame,
+        (320, 320)
+    )
+
+    # OpenCV uses BGR, YOLO expects RGB
+    resized = cv2.cvtColor(
+        resized,
+        cv2.COLOR_BGR2RGB
+    )
+
+    # Convert 0-255 → 0-1
+    resized = resized.astype(
+        np.float32
+    ) / 255.0
+
+    # HWC → CHW
+    resized = np.transpose(
+        resized,
+        (2, 0, 1)
+    )
+
+    # Add batch dimension
+    input_tensor = np.expand_dims(
+        resized,
+        axis=0
+    )
+
+    # Run ONNX Runtime
+    outputs = onnx_session.run(
+        None,
+        {
+            model_input_name: input_tensor
+        }
+    )
+
+    predictions = outputs[0]
+
+    # YOLOv8 output is usually:
+    # (1, 84, 2100)
+    if predictions.ndim == 3:
+        predictions = predictions[0]
+
+    # Convert:
+    # (84, 2100) → (2100, 84)
+    if predictions.shape[0] < predictions.shape[1]:
+        predictions = predictions.T
+
+    detections = []
+
+    for prediction in predictions:
+
+        # First 4 values:
+        # center_x, center_y, width, height
+        cx, cy, width, height = prediction[:4]
+
+        # Remaining values are class confidence scores
+        class_scores = prediction[4:]
+
+        class_id = int(
+            np.argmax(class_scores)
+        )
+
+        confidence = float(
+            class_scores[class_id]
+        )
+
+        # Ignore weak detections
+        if confidence < 0.25:
+            continue
+
+        # Convert center coordinates to corners
+        x1 = cx - width / 2
+        y1 = cy - height / 2
+        x2 = cx + width / 2
+        y2 = cy + height / 2
+
+        # Scale 320x320 coordinates
+        # back to original camera frame
+        x1 = int(
+            x1 * original_width / 320
+        )
+
+        y1 = int(
+            y1 * original_height / 320
+        )
+
+        x2 = int(
+            x2 * original_width / 320
+        )
+
+        y2 = int(
+            y2 * original_height / 320
+        )
+
+        # Keep coordinates inside image
+        x1 = max(
+            0,
+            min(x1, original_width - 1)
+        )
+
+        y1 = max(
+            0,
+            min(y1, original_height - 1)
+        )
+
+        x2 = max(
+            0,
+            min(x2, original_width - 1)
+        )
+
+        y2 = max(
+            0,
+            min(y2, original_height - 1)
+        )
+
+        detections.append({
+            "class_id": class_id,
+            "confidence": confidence,
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2
+        })
+
+    # Apply Non-Maximum Suppression
+    boxes = []
+    scores = []
+
+    for detection in detections:
+
+        x1 = detection["x1"]
+        y1 = detection["y1"]
+        x2 = detection["x2"]
+        y2 = detection["y2"]
+
+        boxes.append([
+            x1,
+            y1,
+            x2 - x1,
+            y2 - y1
+        ])
+
+        scores.append(
+            detection["confidence"]
+        )
+
+    if not boxes:
+        return []
+
+    indices = cv2.dnn.NMSBoxes(
+        boxes,
+        scores,
+        0.25,
+        0.45
+    )
+
+    final_detections = []
+
+    for index in indices:
+
+        if isinstance(index, (list, tuple, np.ndarray)):
+            index = int(index[0])
+        else:
+            index = int(index)
+
+        final_detections.append(
+            detections[index]
+        )
+
+    return final_detections
 
 FOCAL_LENGTH = 800  # Approximate (tune later)
 KNOWN_WIDTHS = {
@@ -343,63 +525,180 @@ def detect():
         cv2.IMREAD_COLOR
     )
 
-    results = model(
-        frame,
-        imgsz=320,
-        verbose=False
-    )
+    if frame is None:
+        return {
+            "status": "error",
+            "message": "image decode failed"
+        }, 400
+
+    detections = run_onnx_detection(frame)
+
     objects = []
-    for r in results:
-        for box in r.boxes:
-            x1, y1, x2, y2 = map(
-                int,
-                box.xyxy[0]
-            )
-            cls = int(box.cls[0])
-            label = model.names[cls]
-            detection_count += 1
-            last_detected_object = label
-            confidence = round(
-                float(box.conf[0]) * 100,
+
+    CLASS_NAMES = [
+        "person",
+        "bicycle",
+        "car",
+        "motorcycle",
+        "airplane",
+        "bus",
+        "train",
+        "truck",
+        "boat",
+        "traffic light",
+        "fire hydrant",
+        "stop sign",
+        "parking meter",
+        "bench",
+        "bird",
+        "cat",
+        "dog",
+        "horse",
+        "sheep",
+        "cow",
+        "elephant",
+        "bear",
+        "zebra",
+        "giraffe",
+        "backpack",
+        "umbrella",
+        "handbag",
+        "tie",
+        "suitcase",
+        "frisbee",
+        "skis",
+        "snowboard",
+        "sports ball",
+        "kite",
+        "baseball bat",
+        "baseball glove",
+        "skateboard",
+        "surfboard",
+        "tennis racket",
+        "bottle",
+        "wine glass",
+        "cup",
+        "fork",
+        "knife",
+        "spoon",
+        "bowl",
+        "banana",
+        "apple",
+        "sandwich",
+        "orange",
+        "broccoli",
+        "carrot",
+        "hot dog",
+        "pizza",
+        "donut",
+        "cake",
+        "chair",
+        "couch",
+        "potted plant",
+        "bed",
+        "dining table",
+        "toilet",
+        "tv",
+        "laptop",
+        "mouse",
+        "remote",
+        "keyboard",
+        "cell phone",
+        "microwave",
+        "oven",
+        "toaster",
+        "sink",
+        "refrigerator",
+        "book",
+        "clock",
+        "vase",
+        "scissors",
+        "teddy bear",
+        "hair drier",
+        "toothbrush"
+    ]
+
+    for detection in detections:
+
+        x1 = detection["x1"]
+        y1 = detection["y1"]
+        x2 = detection["x2"]
+        y2 = detection["y2"]
+
+        cls = detection["class_id"]
+
+        label = CLASS_NAMES[cls]
+
+        confidence = round(
+            detection["confidence"] * 100,
+            2
+        )
+
+        detection_count += 1
+        last_detected_object = label
+
+        width_in_frame = x2 - x1
+
+        distance = None
+
+        if (
+            label in KNOWN_WIDTHS
+            and width_in_frame > 0
+        ):
+
+            real_width = KNOWN_WIDTHS[label]
+
+            distance = round(
+                (
+                    real_width *
+                    FOCAL_LENGTH
+                ) /
+                width_in_frame,
                 2
             )
 
-            width_in_frame = x2 - x1
-            distance = None
-            if label in KNOWN_WIDTHS and width_in_frame > 0:
-                real_width = KNOWN_WIDTHS[label]
-                distance = round(
-                    (real_width * FOCAL_LENGTH) / width_in_frame,
-                    2
-                )
+        current_time = time.time()
 
-            current_time = time.time()
+        if label not in last_saved_times:
+            last_saved_times[label] = 0
 
-            if label not in last_saved_times:
-                last_saved_times[label] = 0
+        if (
+            current_time -
+            last_saved_times[label]
+            > SAVE_DELAY
+        ):
 
-            if current_time - last_saved_times[label] > SAVE_DELAY:
+            event = DetectionEvent(
+                username=(
+                    current_user.username
+                    if current_user.is_authenticated
+                    else "anonymous"
+                ),
+                object_name=label,
+                distance=distance,
+                confidence=confidence
+            )
 
-                event = DetectionEvent(
-                    username=current_user.username if current_user.is_authenticated else "anonymous",
-                    object_name=label,
-                    distance=distance,
-                    confidence=confidence
-                )
+            detection_queue.put(event)
 
-                detection_queue.put(event)
+            last_saved_times[label] = current_time
 
-                last_saved_times[label] = current_time
+        objects.append({
+            "label": label,
+            "confidence": confidence,
+            "distance": distance,
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2
+        })
 
-            objects.append({
-                "label":label,
-                "confidence":confidence,
-                "distance":distance,
-                "x1":x1,
-                "y1":y1,
-                "x2":x2,
-                "y2":y2
-})
+    print(
+        "DETECTION COMPLETE:",
+        len(objects),
+        "objects"
+    )
+    
     return {
         "status": "success",
         "objects": objects
